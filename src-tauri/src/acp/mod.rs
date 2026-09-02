@@ -558,6 +558,9 @@ fn build_spawn_argv(
     let mut args: Vec<String> = Vec::new();
     args.extend(global_args.iter().cloned());
     args.push("agent".into());
+    // Dedicated per-task process. Sharing the TUI leader makes session/load
+    // steal the same backend and the card heading flip Live ↔ Starting.
+    args.push("--no-leader".into());
     if always_approve {
         args.push("--always-approve".into());
     }
@@ -675,6 +678,7 @@ mod tests {
                 "--permission-mode",
                 "auto",
                 "agent",
+                "--no-leader",
                 "-m",
                 "grok-4",
                 "stdio",
@@ -682,7 +686,7 @@ mod tests {
         );
         assert_eq!(
             build_spawn_argv(true, &[], &[]),
-            vec!["agent", "--always-approve", "stdio"]
+            vec!["agent", "--no-leader", "--always-approve", "stdio"]
         );
     }
 

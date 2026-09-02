@@ -301,6 +301,11 @@ fn run(inner: Arc<Inner>, handle_id: String, failed_generation: u64) {
     let next_generation = failed_generation.wrapping_add(1);
     let mut last_error = "ACP reconnect did not start".to_string();
 
+    // Reap the failed stdio child before spawning a replacement. Overlapping
+    // `grok agent stdio` processes on the same session fight over session
+    // locks and MCP, which shows up as the task card flipping Live ↔ Starting.
+    kill_failed_client(&inner, &handle_id, failed_generation);
+
     for delay in RECONNECT_DELAYS {
         if !delay.is_zero() {
             thread::sleep(delay);
@@ -404,6 +409,20 @@ struct ReconnectSnapshot {
     grok_bin: String,
     global_args: Vec<String>,
     agent_args: Vec<String>,
+}
+
+fn kill_failed_client(inner: &Inner, handle_id: &str, failed_generation: u64) {
+    let client = {
+        let agents = inner.agents.lock();
+        let Some(agent) = agents.get(handle_id) else {
+            return;
+        };
+        if agent.connection_generation != failed_generation || !agent.reconnecting {
+            return;
+        }
+        Arc::clone(&agent.client)
+    };
+    let _ = client.kill();
 }
 
 fn reconnect_snapshot(
