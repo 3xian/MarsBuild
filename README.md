@@ -81,8 +81,10 @@ Download a prebuilt installer from **[GitHub Releases](https://github.com/3xian/
 - macOS: Apple Silicon and Intel builds
 - Linux: build from source; CI installers are not available yet
 
-On Wayland (niri, Sway, Hyprland, …) WebKitGTK cannot composite a transparent
-window, and GTK client-side decorations render as a black bar. Launch with:
+On some Wayland compositors (niri, Sway, Hyprland, …) Overlay CSD and
+acrylic transparency mis-render with WebKitGTK. These flags are a
+workaround until that stack handles the default chrome; they can be
+dropped then. Launch with:
 
 ```bash
 PinkCode --disable-csd --disable-transparency
@@ -130,7 +132,7 @@ npm run check              # frontend + Rust (fmt/clippy/test) — same as CI
 | Flag | Meaning |
 |------|---------|
 | `--disable-csd` | Hide client-side decorations (black title bar on Wayland) |
-| `--disable-transparency` | Opaque window (WebKitGTK has no Wayland alpha protocol) |
+| `--disable-transparency` | Opaque window (WebKitGTK + compositor alpha) |
 | `-h`, `--help` | Show flags |
 
 ## Architecture

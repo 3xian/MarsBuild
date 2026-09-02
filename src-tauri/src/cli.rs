@@ -1,9 +1,10 @@
 //! Startup flags for window chrome that must be applied before the webview exists.
 //!
-//! Acrylic + Overlay CSD is shaped for macOS/Windows. On Wayland, WebKitGTK
-//! cannot composite an alpha surface (no protocol support), and GTK CSD shows
-//! as a black bar. These flags rewrite `tauri.conf.json` window fields in
-//! memory so the window is created opaque and undecorated.
+//! Acrylic + Overlay CSD is shaped for macOS/Windows. On some Wayland
+//! compositors the same chrome mis-renders with WebKitGTK. These flags are a
+//! compatibility workaround: they rewrite `tauri.conf.json` window fields in
+//! memory so the window is created with `decorations=false` and
+//! `transparent=false`. Drop them when the stack handles the default chrome.
 
 use tauri::utils::config::{Color, WindowConfig};
 use tauri::TitleBarStyle;
@@ -20,8 +21,8 @@ Usage:
 Options:
   --disable-csd             Hide client-side decorations (fixes the black
                             title bar on Wayland compositors such as niri)
-  --disable-transparency    Opaque window (WebKitGTK has no Wayland
-                            protocol for alpha compositing)
+  --disable-transparency    Opaque window (WebKitGTK + compositor alpha
+                            on some Wayland setups)
   -h, --help                Show this help
 ";
 
@@ -37,8 +38,9 @@ pub enum Action {
 }
 
 impl Flags {
-    /// GTK reads `GTK_CSD` at init; `set_decorations(false)` after the window
-    /// exists is not enough to stop the black CSD bar.
+    /// GTK reads `GTK_CSD` at gtk_init. This only disables GTK's default CSD;
+    /// Tao still installs a custom titlebar. `decorations=false` in `apply()`
+    /// is what actually hides chrome.
     pub fn prepare_env(self) {
         if self.disable_csd {
             #[cfg(target_os = "linux")]
