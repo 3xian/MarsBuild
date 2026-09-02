@@ -304,10 +304,14 @@ fn run(inner: Arc<Inner>, handle_id: String, failed_generation: u64) {
     // Reap the failed stdio child before spawning a replacement. Overlapping
     // `grok agent stdio` processes on the same session fight over session
     // locks and MCP, which shows up as the task card flipping Live ↔ Starting.
-    kill_failed_client(&inner, &handle_id, failed_generation);
+    let killed_pid = kill_failed_client(&inner, &handle_id, failed_generation);
+    if let Some(pid) = killed_pid {
+        let _ = crate::sessions::wait_until_dead(pid, Duration::from_secs(2));
+    }
 
     if let Some(snapshot) = reconnect_snapshot(&inner, &handle_id, failed_generation) {
-        if let Some(msg) = crate::sessions::session_open_elsewhere_error(&snapshot.session_id, None)
+        if let Some(msg) =
+            crate::sessions::session_open_elsewhere_error(&snapshot.session_id, killed_pid)
         {
             fail_reconnect(&inner, &handle_id, failed_generation, &msg);
             return;
@@ -419,18 +423,18 @@ struct ReconnectSnapshot {
     agent_args: Vec<String>,
 }
 
-fn kill_failed_client(inner: &Inner, handle_id: &str, failed_generation: u64) {
+fn kill_failed_client(inner: &Inner, handle_id: &str, failed_generation: u64) -> Option<u32> {
     let client = {
         let agents = inner.agents.lock();
-        let Some(agent) = agents.get(handle_id) else {
-            return;
-        };
+        let agent = agents.get(handle_id)?;
         if agent.connection_generation != failed_generation || !agent.reconnecting {
-            return;
+            return None;
         }
         Arc::clone(&agent.client)
     };
+    let pid = client.pid();
     let _ = client.kill();
+    Some(pid)
 }
 
 fn reconnect_snapshot(
@@ -571,11 +575,12 @@ fn fail_reconnect(inner: &Inner, handle_id: &str, failed_generation: u64, error:
             agent.info.status = ManagedStatus::Error;
             agent.info.pid = None;
             agent.info.last_error = Some(format!("ACP reconnect failed: {error}"));
-            Some(agent.info.clone())
+            Some((agent.info.clone(), Arc::clone(&agent.client)))
         })
     };
-    if let Some(info) = updated {
+    if let Some((info, client)) = updated {
         AgentManager::emit_status(inner, &info);
+        let _ = client.kill();
     }
 }
 

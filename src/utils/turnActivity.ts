@@ -396,6 +396,23 @@ export function resolveTurnActivity(
   // PinkCode already attached but idle — no status row.
   if (isManagedConnected(managed)) return null;
 
+  // Our attach died. Do not relabel the leftover grok pid as Grok Build.
+  if (managed?.status === "error") {
+    return activity({
+      kind: "waiting",
+      label: "Disconnected",
+      tone: "danger",
+      indicator: "danger",
+      phaseKey: "error",
+      source: "managed",
+      hint: managed.lastError?.trim()
+        ? managed.lastError
+        : "Agent lost ACP. Stop, then send to reconnect.",
+      showPhaseTimer: false,
+      showTurnTimer: false,
+    });
+  }
+
   // External host has the session process open (typical: Grok Build TUI).
   if (opts?.sessionIsActive) {
     const inferred = inferActivityFromTimeline(items, "external");

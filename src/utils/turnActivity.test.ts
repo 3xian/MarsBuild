@@ -152,6 +152,15 @@ describe("resolveTurnActivity", () => {
     expect(act?.hint).toMatch(/connect/i);
   });
 
+  it("does not call a PinkCode ACP error Open in Grok Build", () => {
+    const act = resolveTurnActivity(managed("error"), [], {
+      sessionIsActive: true,
+    });
+    expect(act?.label).toBe("Disconnected");
+    expect(act?.source).toBe("managed");
+    expect(act?.kind).toBe("waiting");
+  });
+
   it("does not show external ambient when PinkCode is already connected idle", () => {
     expect(
       resolveTurnActivity(managed("ready"), [], { sessionIsActive: true }),

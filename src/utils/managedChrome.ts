@@ -50,6 +50,7 @@ export function resolveCardState(
   if (st === "starting") return "starting";
   if (st === "awaitingPermission") return "awaiting";
   if (isPinkcodeAttached(st)) return "live";
+  if (st === "error") return "idle";
   if (openElsewhere) return "open";
   return "idle";
 }

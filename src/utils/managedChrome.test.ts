@@ -31,6 +31,7 @@ describe("resolveCardState / rankManagedCard", () => {
     expect(resolveCardState("starting", false)).toBe("starting");
     expect(resolveCardState("awaitingPermission", false)).toBe("awaiting");
     expect(resolveCardState("ready", false)).toBe("live");
+    expect(resolveCardState("error", true)).toBe("idle");
     expect(resolveCardState(undefined, true)).toBe("open");
     expect(resolveCardState(undefined, false)).toBe("idle");
   });

@@ -907,7 +907,7 @@ impl AgentManager {
             }
         }
 
-        let (updated, should_reconnect) = {
+        let (updated, should_reconnect, kill_client) = {
             let mut agents = inner.agents.lock();
             match agents.get_mut(handle_id) {
                 Some(agent) => {
@@ -943,15 +943,18 @@ impl AgentManager {
                     agent.info.last_error = Some(if can_reconnect {
                         format!("ACP {failure}; reconnecting after transport loss: {reason}")
                     } else if agent.reconnect_burst >= 3 {
-                        format!(
-                            "ACP {failure}: {reason} (gave up after repeated reconnects; the session may be open in another Grok process)"
-                        )
+                        format!("ACP {failure}: {reason} (gave up after repeated reconnects)")
                     } else {
                         format!("ACP {failure}: {reason}")
                     });
-                    (Some(agent.info.clone()), can_reconnect)
+                    let kill_on_give_up = if can_reconnect {
+                        None
+                    } else {
+                        Some(Arc::clone(&agent.client))
+                    };
+                    (Some(agent.info.clone()), can_reconnect, kill_on_give_up)
                 }
-                None => (None, false),
+                None => (None, false, None),
             }
         };
         if let Some(info) = updated {
@@ -959,6 +962,10 @@ impl AgentManager {
         }
         if should_reconnect {
             Self::spawn_reconnect(Arc::clone(inner), handle_id.to_string(), generation);
+        } else if let Some(client) = kill_client {
+            // Giving up without a kill leaves grok in active_sessions.json,
+            // which the UI then labels "Open in Grok Build".
+            let _ = client.kill();
         }
     }
 

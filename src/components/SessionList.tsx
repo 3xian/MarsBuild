@@ -113,7 +113,10 @@ export function SessionList({
         {visible.map((s) => {
           const managedStatus = managedStatuses?.[s.id];
           const attached = isPinkcodeAttached(managedStatus);
-          const openElsewhere = s.isActive && !attached;
+          // Error means PinkCode owned this task and dropped ACP. A leftover
+          // grok pid in active_sessions is ours, not Grok Build.
+          const openElsewhere =
+            s.isActive && !attached && managedStatus !== "error";
           const needsInput = needsInputSessionIds?.has(s.id) ?? false;
           const state = resolveCardState(
             managedStatus,

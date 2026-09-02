@@ -129,6 +129,22 @@ pub fn session_open_elsewhere_error(session_id: &str, ignore_pid: Option<u32>) -
     })
 }
 
+/// Poll until `pid` is gone or `timeout` elapses. Used after killing an ACP
+/// child so `active_sessions.json` does not still list it as a foreign owner.
+pub fn wait_until_dead(pid: u32, timeout: Duration) -> bool {
+    if pid == 0 || !process_is_alive(pid) {
+        return true;
+    }
+    let start = Instant::now();
+    while start.elapsed() < timeout {
+        std::thread::sleep(Duration::from_millis(50));
+        if !process_is_alive(pid) {
+            return true;
+        }
+    }
+    !process_is_alive(pid)
+}
+
 /// Best-effort check that `pid` still refers to a live process.
 fn process_is_alive(pid: u32) -> bool {
     if pid == 0 {
@@ -1270,6 +1286,11 @@ fn extract_update_unix_secs(msg: &Value) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wait_until_dead_treats_pid_zero_as_gone() {
+        assert!(wait_until_dead(0, Duration::from_millis(1)));
+    }
 
     #[test]
     fn token_usage_series_returns_window() {
