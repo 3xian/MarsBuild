@@ -6,6 +6,7 @@ mod agent_types;
 mod ask_user_question;
 mod auth;
 mod billing;
+mod cli;
 mod config;
 mod fs_atomic;
 mod json_util;
@@ -613,6 +614,19 @@ pub fn run() {
     // Layered config + structured logging before any agent/watcher work.
     config::init_tracing();
 
+    let flags = match cli::parse(std::env::args()) {
+        cli::Action::Help => {
+            print!("{}", cli::USAGE);
+            return;
+        }
+        cli::Action::Run(flags) => flags,
+    };
+    // GTK_CSD must be set before gtk_init inside Builder::run.
+    flags.prepare_env();
+
+    let mut context = tauri::generate_context!();
+    flags.apply(context.config_mut());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -708,6 +722,6 @@ pub fn run() {
             git_commit,
             git_apply_patch,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }

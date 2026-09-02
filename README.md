@@ -81,6 +81,13 @@ Download a prebuilt installer from **[GitHub Releases](https://github.com/3xian/
 - macOS: Apple Silicon and Intel builds
 - Linux: build from source; CI installers are not available yet
 
+On Wayland (niri, Sway, Hyprland, …) WebKitGTK cannot composite a transparent
+window, and GTK client-side decorations render as a black bar. Launch with:
+
+```bash
+PinkCode --disable-csd --disable-transparency
+```
+
 ## Development
 
 ### Prerequisites
@@ -117,6 +124,14 @@ npm run check              # frontend + Rust (fmt/clippy/test) — same as CI
 |----------|---------|
 | `GROK_BIN` | Path to `grok` / `grok.exe` |
 | `GROK_HOME` | Grok data root (default `~/.grok`) |
+
+**CLI (optional)**
+
+| Flag | Meaning |
+|------|---------|
+| `--disable-csd` | Hide client-side decorations (black title bar on Wayland) |
+| `--disable-transparency` | Opaque window (WebKitGTK has no Wayland alpha protocol) |
+| `-h`, `--help` | Show flags |
 
 ## Architecture
 
