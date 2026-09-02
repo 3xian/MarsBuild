@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
   attachAgent,
+  formatInvokeError,
+  isExclusiveSessionError,
   getLastSpawnPermissionMode,
   getSessionDetail,
   interjectAgent,
@@ -509,10 +511,7 @@ function App() {
     sessionId: string,
   ): Promise<ManagedAgentInfo | null> {
     const existing = managedList.find(
-      (m) =>
-        m.sessionId === sessionId &&
-        m.status !== "stopped" &&
-        m.status !== "error",
+      (m) => m.sessionId === sessionId && isLiveManagedStatus(m.status),
     );
     if (existing) return existing;
 
@@ -522,11 +521,19 @@ function App() {
     setSelectedId(sessionId);
     // Backend restores this task's saved mode when permissionMode is omitted.
     const saved = taskPermissionModes[sessionId];
-    const info = await attachAgent({
-      sessionId: card.id,
-      cwd: card.cwd,
-      permissionMode: saved ?? null,
-    });
+    let info: ManagedAgentInfo;
+    try {
+      info = await attachAgent({
+        sessionId: card.id,
+        cwd: card.cwd,
+        permissionMode: saved ?? null,
+      });
+    } catch (e) {
+      // Another Grok process owns the session. Open in Grok Build chrome
+      // is the signal; do not paint the error banner.
+      if (isExclusiveSessionError(e)) return null;
+      throw e;
+    }
     upsertManaged(info);
     if (info.sessionId) {
       setTaskPermissionModes((prev) => ({
@@ -716,11 +723,7 @@ function App() {
       let liveAgent = managedForSession;
       let handleId = liveAgent?.handleId;
       let sessionIdForPlan = liveAgent?.sessionId ?? selectedId;
-      if (
-        !handleId ||
-        liveAgent?.status === "stopped" ||
-        liveAgent?.status === "error"
-      ) {
+      if (!handleId || !isLiveManagedStatus(liveAgent?.status)) {
         const sessionId = selectedId ?? sessions[0]?.id ?? null;
         if (!sessionId) {
           setError("Select a task first, or create one with New.");
@@ -728,7 +731,7 @@ function App() {
         }
         const info = await ensureAttached(sessionId);
         if (!info) {
-          setError("Could not connect to this task.");
+          // Exclusive-session attach is refused; Open in Grok Build is the cue.
           return;
         }
         liveAgent = info;
@@ -740,7 +743,7 @@ function App() {
         try {
           liveAgent = await applySessionModel(liveAgent);
         } catch (e) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(formatInvokeError(e));
         }
       }
 
@@ -769,7 +772,9 @@ function App() {
       }
       setPinTimelineBottomSeq((n) => n + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (!isExclusiveSessionError(e)) {
+        setError(formatInvokeError(e));
+      }
     } finally {
       setControlBusy(false);
     }

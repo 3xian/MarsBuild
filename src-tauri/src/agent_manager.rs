@@ -11,6 +11,7 @@ use crate::permission_policy::{
     GateDecision,
 };
 use crate::rpc_handler::{self, HandleResult, ResponseAction};
+use crate::sessions;
 use crate::shell_emitter;
 use crate::shell_stream::ShellStream;
 use crate::task_prefs;
@@ -37,6 +38,8 @@ struct LiveAgent {
     agent_args: Vec<String>,
     in_flight_prompts: HashSet<String>,
     current_prompt_id: Option<String>,
+    last_activate: Option<Instant>,
+    reconnect_burst: u32,
 }
 
 struct RequestTarget {
@@ -917,7 +920,18 @@ impl AgentManager {
                     ) {
                         return;
                     }
-                    let can_reconnect = agent.info.session_id.is_some();
+                    const UNSTABLE: Duration = Duration::from_secs(5);
+                    let unstable = agent
+                        .last_activate
+                        .map(|t| t.elapsed() < UNSTABLE)
+                        .unwrap_or(false);
+                    if unstable {
+                        agent.reconnect_burst = agent.reconnect_burst.saturating_add(1);
+                    } else {
+                        agent.reconnect_burst = 0;
+                    }
+                    let can_reconnect =
+                        agent.info.session_id.is_some() && agent.reconnect_burst < 3;
                     agent.info.status = if can_reconnect {
                         ManagedStatus::Starting
                     } else {
@@ -928,6 +942,10 @@ impl AgentManager {
                     agent.info.pending_permission_count = 0;
                     agent.info.last_error = Some(if can_reconnect {
                         format!("ACP {failure}; reconnecting after transport loss: {reason}")
+                    } else if agent.reconnect_burst >= 3 {
+                        format!(
+                            "ACP {failure}: {reason} (gave up after repeated reconnects; the session may be open in another Grok process)"
+                        )
                     } else {
                         format!("ACP {failure}: {reason}")
                     });
@@ -1043,6 +1061,8 @@ impl AgentManager {
                 agent_args: agent_args.to_vec(),
                 in_flight_prompts: HashSet::new(),
                 current_prompt_id: None,
+                last_activate: None,
+                reconnect_burst: 0,
             },
         );
         Self::drain_early_requests(&self.inner, &handle_id);
@@ -1263,6 +1283,9 @@ impl AgentManager {
         };
 
         info.session_id = Some(session_id.clone());
+        if let Some(a) = self.inner.agents.lock().get_mut(&handle_id) {
+            a.last_activate = Some(Instant::now());
+        }
         task_prefs::set_permission_mode(&session_id, permission_mode)?;
         if let Some(models) = result.models.as_ref() {
             models::apply_models_info(&mut info, models);
@@ -1312,14 +1335,24 @@ impl AgentManager {
             return Err(format!("Invalid working directory: {cwd}"));
         }
 
-        {
+        let existing = {
             let agents = self.inner.agents.lock();
-            if let Some(existing) = agents.values().find(|a| {
-                a.info.session_id.as_deref() == Some(session_id.as_str())
-                    && !matches!(a.info.status, ManagedStatus::Stopped | ManagedStatus::Error)
-            }) {
-                return Ok(existing.info.clone());
+            agents
+                .values()
+                .find(|a| {
+                    a.info.session_id.as_deref() == Some(session_id.as_str())
+                        && !matches!(a.info.status, ManagedStatus::Stopped | ManagedStatus::Error)
+                })
+                .map(|a| (a.info.clone(), a.info.pid))
+        };
+        if let Some((info, pid)) = existing {
+            if let Some(msg) = sessions::session_open_elsewhere_error(&session_id, pid) {
+                return Err(msg);
             }
+            return Ok(info);
+        }
+        if let Some(msg) = sessions::session_open_elsewhere_error(&session_id, None) {
+            return Err(msg);
         }
         {
             let mut attaching = self.inner.attaching_sessions.lock();
@@ -1327,6 +1360,7 @@ impl AgentManager {
                 return Err(format!("session {session_id} is already attaching"));
             }
         }
+
         let _reservation = AttachReservation {
             inner: Arc::clone(&self.inner),
             session_id: session_id.clone(),
@@ -1384,6 +1418,7 @@ impl AgentManager {
         info.status = ManagedStatus::Ready;
         if let Some(a) = self.inner.agents.lock().get_mut(&handle_id) {
             a.info = info.clone();
+            a.last_activate = Some(Instant::now());
         }
         Self::emit_status(&self.inner, &info);
 

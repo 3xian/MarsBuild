@@ -118,6 +118,27 @@ export async function attachAgent(request: AttachRequest): Promise<ManagedAgentI
   return invoke<ManagedAgentInfo>("attach_agent", { request });
 }
 
+/** Tauri `invoke` rejects with a string, Error, or `{ message }`. */
+export function formatInvokeError(error: unknown): string {
+  if (typeof error === "string" && error.trim()) return error;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === "object") {
+    const rec = error as { message?: unknown; error?: unknown };
+    if (typeof rec.message === "string" && rec.message.trim()) {
+      return rec.message;
+    }
+    if (typeof rec.error === "string" && rec.error.trim()) {
+      return rec.error;
+    }
+  }
+  return String(error);
+}
+
+/** Attach refused because another Grok pid owns the session. */
+export function isExclusiveSessionError(error: unknown): boolean {
+  return /already open in another Grok process/i.test(formatInvokeError(error));
+}
+
 export async function promptAgent(
   handleId: string,
   text: string,

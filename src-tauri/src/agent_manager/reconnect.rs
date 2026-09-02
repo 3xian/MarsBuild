@@ -306,6 +306,14 @@ fn run(inner: Arc<Inner>, handle_id: String, failed_generation: u64) {
     // locks and MCP, which shows up as the task card flipping Live ↔ Starting.
     kill_failed_client(&inner, &handle_id, failed_generation);
 
+    if let Some(snapshot) = reconnect_snapshot(&inner, &handle_id, failed_generation) {
+        if let Some(msg) = crate::sessions::session_open_elsewhere_error(&snapshot.session_id, None)
+        {
+            fail_reconnect(&inner, &handle_id, failed_generation, &msg);
+            return;
+        }
+    }
+
     for delay in RECONNECT_DELAYS {
         if !delay.is_zero() {
             thread::sleep(delay);
@@ -482,6 +490,7 @@ fn activate_candidate(
         super::models::apply_models_info(&mut agent.info, models);
     }
     set_prompt_state(agent, activation.running_prompt_id);
+    agent.last_activate = Some(std::time::Instant::now());
     AgentManager::emit_status(inner, &agent.info);
     Some(old_client)
 }

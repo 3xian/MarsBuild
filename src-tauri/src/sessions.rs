@@ -110,6 +110,25 @@ pub fn read_active_sessions() -> Result<Vec<ActiveSession>> {
         .collect())
 }
 
+/// Live pid holding `session_id` in `active_sessions.json`, if it is not `ignore_pid`.
+pub fn foreign_active_pid(session_id: &str, ignore_pid: Option<u32>) -> Option<u32> {
+    read_active_sessions().ok()?.into_iter().find_map(|s| {
+        if s.session_id == session_id && ignore_pid != Some(s.pid) {
+            Some(s.pid)
+        } else {
+            None
+        }
+    })
+}
+
+pub fn session_open_elsewhere_error(session_id: &str, ignore_pid: Option<u32>) -> Option<String> {
+    foreign_active_pid(session_id, ignore_pid).map(|pid| {
+        format!(
+            "session is already open in another Grok process (pid {pid}); close that process or pick a different task"
+        )
+    })
+}
+
 /// Best-effort check that `pid` still refers to a live process.
 fn process_is_alive(pid: u32) -> bool {
     if pid == 0 {

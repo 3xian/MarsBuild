@@ -2,7 +2,7 @@ import type { ManagedAgentInfo } from "../types";
 
 /** Agent is attached and can own the live ACP tail / timeline buffers. */
 export function isLiveManagedStatus(
-  status: ManagedAgentInfo["status"],
+  status: ManagedAgentInfo["status"] | null | undefined,
 ): boolean {
   return (
     status === "ready" ||
