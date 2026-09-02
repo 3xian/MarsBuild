@@ -75,7 +75,9 @@ function pickSelectedId(
   prev: string | null,
   managed?: ManagedAgentInfo[],
 ): string | null {
-  if (prev && list.some((s) => s.id === prev)) return prev;
+  // Keep the open pane. The roster page is not the full list, so "not in
+  // this page" is not "gone" — treating it as gone remounts from page 1.
+  if (prev) return prev;
   if (managed?.length) {
     const managedSid = managed.find((m) => m.sessionId)?.sessionId;
     if (managedSid && list.some((s) => s.id === managedSid)) {
@@ -294,10 +296,10 @@ function App() {
     if (now - lastFsRefreshRef.current < FS_REFRESH_MIN_MS) return;
     lastFsRefreshRef.current = now;
     void refreshList();
-    const id = selectedIdRef.current;
-    if (id) void refreshDetail(id, true);
+    // Roster only. Reloading the open pane from disk replaces recentUpdates
+    // with the first history page and paints as a session restart.
     setGitRefreshKey((n) => n + 1);
-  }, [refreshList, refreshDetail]);
+  }, [refreshList]);
 
   const liveManagedCount = useMemo(
     () =>
@@ -312,11 +314,17 @@ function App() {
     () => setGitRefreshKey((n) => n + 1),
   );
 
+  const loadedDetailIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      loadedDetailIdRef.current = null;
       return;
     }
+    // Load once per selected task. refreshDetail identity must not replay
+    // getSessionDetail (first history page) into a live pane.
+    if (loadedDetailIdRef.current === selectedId) return;
+    loadedDetailIdRef.current = selectedId;
     void refreshDetail(selectedId);
   }, [selectedId, refreshDetail]);
 
@@ -344,12 +352,7 @@ function App() {
         // the appended bytes for this card.
         void refreshCard(payload.sessionId);
       }
-      if (
-        selected &&
-        (!payload.sessionId || payload.sessionId === selected)
-      ) {
-        void refreshDetail(selected, true);
-      }
+      // Do not getSessionDetail the open pane on updates.jsonl.
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -358,7 +361,7 @@ function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [refreshList, refreshDetail, refreshCard]);
+  }, [refreshList, refreshCard]);
 
   // These are advertised ACP capabilities, so consume their notifications
   // and invalidate the workspace immediately.
@@ -382,7 +385,6 @@ function App() {
         return;
       }
       setGitRefreshKey((n) => n + 1);
-      if (selected) void refreshDetail(selected, true);
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -391,7 +393,7 @@ function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [refreshDetail]);
+  }, []);
 
   // Focus / tab visible → catch anything the watcher missed (debounced).
   useEffect(() => {
@@ -405,10 +407,10 @@ function App() {
       }, 300);
     };
     document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", onVis);
+    // WebKitGTK/Wayland fires window focus on every click; that used to
+    // refreshFromDisk → roster reload → selection bounce → page-1 remount.
     return () => {
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", onVis);
       if (t != null) window.clearTimeout(t);
     };
   }, [refreshFromDisk]);
