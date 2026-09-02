@@ -15,7 +15,10 @@ import type {
   ShellEntry,
 } from "../types";
 import type { LocalSlashItem } from "../utils/localSlash";
-import { isLiveManagedStatus } from "../utils/managedStatus";
+import {
+  isAttachedManagedStatus,
+  isLiveManagedStatus,
+} from "../utils/managedStatus";
 import { describeUpdate, extractUpdateTsMs } from "../utils/format";
 import {
   describePendingInteractionNotification,
@@ -250,9 +253,11 @@ export function useAgentEvents(
     (sessionId: string, updates: unknown[]) => {
       if (!sessionId) return;
       const diskItems = hydrateLiveFromDiskUpdates(updates, sessionId);
-      setLiveBySession((prev) =>
-        mergeDiskLiveIntoMap(prev, sessionId, diskItems),
-      );
+      setLiveBySession((prev) => {
+        const next = mergeDiskLiveIntoMap(prev, sessionId, diskItems);
+        if (next !== prev) liveRef.current = next;
+        return next;
+      });
     },
     [],
   );
@@ -576,7 +581,9 @@ export function useAgentEvents(
     const keep = new Set<string>();
     if (selectedSessionId) keep.add(selectedSessionId);
     for (const m of managedList) {
-      if (!isLiveManagedStatus(m.status)) continue;
+      // Keep buffers through starting/stopping so reconnect does not drop
+      // the open timeline (291 → first disk page → 291).
+      if (!isAttachedManagedStatus(m.status)) continue;
       keep.add(m.handleId);
       if (m.sessionId) keep.add(m.sessionId);
     }

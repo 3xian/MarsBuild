@@ -53,7 +53,7 @@ export function updatesPageFingerprint(updates: unknown[]): string {
  * - First page available for a session visit → hydrate
  * - "Load earlier activity" → hydrate (always; uses latest map merge)
  * - Silent detail / FS polls:
- *   - when `liveOwnsTail` (live ACP attached) → update raw page only
+ *   - when `liveOwnsTail` (ACP attached, including starting) → raw page only
  *   - when disk-only → re-hydrate when the page fingerprint changes
  */
 export function useTimelineHistory(

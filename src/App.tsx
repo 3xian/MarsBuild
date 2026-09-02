@@ -48,7 +48,10 @@ import {
   isLocalSlashCommand,
   runLocalSlash,
 } from "./utils/localSlash";
-import { isLiveManagedStatus } from "./utils/managedStatus";
+import {
+  isAttachedManagedStatus,
+  isLiveManagedStatus,
+} from "./utils/managedStatus";
 import type { UserQuestionResolvePayload } from "./utils/permissionPayload";
 import { joinUnderRoot } from "./utils/paths";
 import {
@@ -175,9 +178,10 @@ function App() {
     onError: setError,
   });
   // ACP owns the live tail when attached; disk-only sessions re-hydrate on poll.
+  // Include `starting` so reconnect does not replace the open pane with page 1.
   const liveOwnsTail =
     managedForSession != null &&
-    isLiveManagedStatus(managedForSession.status);
+    isAttachedManagedStatus(managedForSession.status);
   const timelineHistory = useTimelineHistory(
     selectedId,
     detail,

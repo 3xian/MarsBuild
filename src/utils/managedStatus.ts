@@ -10,3 +10,13 @@ export function isLiveManagedStatus(
     status === "awaitingPermission"
   );
 }
+
+/**
+ * Non-terminal attach, including `starting` / `stopping`.
+ * Keep timeline buffers and skip disk page-1 resync while reconnecting.
+ */
+export function isAttachedManagedStatus(
+  status: ManagedAgentInfo["status"] | null | undefined,
+): boolean {
+  return Boolean(status && status !== "stopped" && status !== "error");
+}
