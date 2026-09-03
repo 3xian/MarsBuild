@@ -1,7 +1,9 @@
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from "react";
 import type {
@@ -28,7 +30,7 @@ import type { ResolvePermissionFn } from "../utils/permissionPayload";
 import type { PromptQueueController } from "../hooks/usePromptQueueController";
 import { DiffPanel } from "./DiffPanel";
 import { PermissionGate } from "./PermissionGate";
-import { PromptBar } from "./PromptBar";
+import { PromptBar, type SendResult } from "./PromptBar";
 import { PromptQueue } from "./PromptQueue";
 import { TimelinePanel } from "./TimelinePanel";
 import { TurnStatusBar } from "./TurnStatusBar";
@@ -49,7 +51,7 @@ interface Props {
   controlBusy: boolean;
   sessionMode: SessionMode;
   onSessionModeChange: (mode: SessionMode) => void;
-  onSendPrompt: (text: string) => void;
+  onSendPrompt: (text: string) => void | Promise<void | SendResult>;
   promptQueue: PromptQueueController;
   onResolvePermission: ResolvePermissionFn;
   /** Stop the live agent for this task (confirm handled by parent). */
@@ -102,6 +104,11 @@ export function SessionDetailView({
   reasoningEffort = null,
 }: Props) {
   const tabBodyRef = useRef<HTMLDivElement>(null);
+  const [sendRefusalHint, setSendRefusalHint] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSendRefusalHint(null);
+  }, [detail?.card.id]);
 
   // Timeline pins to bottom; Diff / Raw expect top. Shared .tab-body
   // scroll container otherwise keeps Timeline scrollTop and hides content.
@@ -258,6 +265,7 @@ export function SessionDetailView({
         managed={managed}
         timelineItems={timelineItems}
         sessionIsActive={Boolean(card?.isActive)}
+        refusalHint={sendRefusalHint}
       />
       <PromptBar
         managed={managed}
@@ -265,6 +273,7 @@ export function SessionDetailView({
         sessionMode={sessionMode}
         onSessionModeChange={onSessionModeChange}
         onSend={onSendPrompt}
+        onRefusal={setSendRefusalHint}
         availableCommands={availableCommands}
         timelineItems={timelineItems}
         sessionId={card?.id ?? null}

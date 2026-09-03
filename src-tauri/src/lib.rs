@@ -201,13 +201,13 @@ async fn spawn_agent(
 async fn attach_agent(
     manager: tauri::State<'_, AgentManager>,
     request: AttachRequest,
-) -> Result<ManagedAgentInfo, String> {
+) -> Result<ManagedAgentInfo, sessions::CommandError> {
     // session/load can take seconds; run off-thread so the webview keeps painting
     // (breathing light on the task card, etc.).
     let manager = manager.inner().clone();
     tauri::async_runtime::spawn_blocking(move || manager.attach(request))
         .await
-        .map_err(|e| format!("attach task failed: {e}"))?
+        .map_err(|e| sessions::CommandError::other(format!("attach task failed: {e}")))?
 }
 
 #[tauri::command]

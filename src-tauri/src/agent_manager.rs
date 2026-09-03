@@ -1332,14 +1332,14 @@ impl AgentManager {
         Ok(info)
     }
 
-    pub fn attach(&self, req: AttachRequest) -> Result<ManagedAgentInfo, String> {
+    pub fn attach(&self, req: AttachRequest) -> Result<ManagedAgentInfo, sessions::CommandError> {
         let cwd = req.cwd.trim().to_string();
         let session_id = req.session_id.trim().to_string();
         if session_id.is_empty() {
             return Err("session_id required".into());
         }
         if cwd.is_empty() || !Path::new(&cwd).is_dir() {
-            return Err(format!("Invalid working directory: {cwd}"));
+            return Err(format!("Invalid working directory: {cwd}").into());
         }
 
         let existing = {
@@ -1364,7 +1364,7 @@ impl AgentManager {
         {
             let mut attaching = self.inner.attaching_sessions.lock();
             if !attaching.insert(session_id.clone()) {
-                return Err(format!("session {session_id} is already attaching"));
+                return Err(format!("session {session_id} is already attaching").into());
             }
         }
 
@@ -1415,7 +1415,8 @@ impl AgentManager {
                     &handle_id,
                     &mut info,
                     e.user_message(),
-                ));
+                )
+                .into());
             }
         };
 

@@ -22,6 +22,7 @@ import {
   stopAgent,
 } from "./api";
 import { MacosTitlebarBrand } from "./components/MacosTitlebarBrand";
+import type { SendResult } from "./components/PromptBar";
 import { NewTaskModal } from "./components/NewTaskModal";
 import { SessionDetailView } from "./components/SessionDetail";
 import { SessionList } from "./components/SessionList";
@@ -55,6 +56,7 @@ import {
   isAttachedManagedStatus,
   isLiveManagedStatus,
 } from "./utils/managedStatus";
+import { SEND_REFUSAL_HINT } from "./utils/turnActivity";
 import { pickSelectedId } from "./utils/pickSelectedId";
 import type { UserQuestionResolvePayload } from "./utils/permissionPayload";
 import { joinUnderRoot } from "./utils/paths";
@@ -691,9 +693,9 @@ function App() {
     }
   }
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string): Promise<SendResult> {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed) return { accepted: false };
     setControlBusy(true);
     setError(null);
     setTab("timeline");
@@ -723,7 +725,7 @@ function App() {
           if (result.refreshWeekUsage) {
             void refreshWeekUsage({ force: true });
           }
-          return;
+          return { accepted: true };
         }
       }
 
@@ -736,12 +738,12 @@ function App() {
         const sessionId = selectedId ?? sessions[0]?.id ?? null;
         if (!sessionId) {
           setError("Select a task first, or create one with New.");
-          return;
+          return { accepted: false };
         }
         const info = await ensureAttached(sessionId);
         if (!info) {
-          // Exclusive-session attach is refused; Open in Grok Build is the cue.
-          return;
+          // Banner stays off; composer keeps the draft and shows the card cue.
+          return { accepted: false, hint: SEND_REFUSAL_HINT.openElsewhere };
         }
         liveAgent = info;
         handleId = info.handleId;
@@ -751,7 +753,7 @@ function App() {
       // Reconnect / first attach still Starting. Do not prompt (agent not
       // ready) and do not attach again with ignore_pid = None.
       if (!isLiveManagedStatus(liveAgent?.status)) {
-        return;
+        return { accepted: false, hint: SEND_REFUSAL_HINT.connecting };
       }
 
       if (liveAgent) {
@@ -786,10 +788,13 @@ function App() {
         });
       }
       setPinTimelineBottomSeq((n) => n + 1);
+      return { accepted: true };
     } catch (e) {
-      if (!isExclusiveSessionError(e)) {
-        setError(formatInvokeError(e));
+      if (isExclusiveSessionError(e)) {
+        return { accepted: false, hint: SEND_REFUSAL_HINT.openElsewhere };
       }
+      setError(formatInvokeError(e));
+      return { accepted: false };
     } finally {
       setControlBusy(false);
     }
@@ -1028,7 +1033,7 @@ function App() {
           controlBusy={controlBusy}
           sessionMode={effectiveSessionMode}
           onSessionModeChange={(m) => void handleSessionModeChange(m)}
-          onSendPrompt={(t) => void handleSend(t)}
+          onSendPrompt={handleSend}
           promptQueue={promptQueue}
           onResolvePermission={(item, opt, comments, payload) =>
             void handleResolvePermission(item, opt, comments, payload)

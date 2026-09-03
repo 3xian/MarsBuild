@@ -20,6 +20,9 @@ import {
   selectedReasoningEffort,
 } from "../utils/reasoningEffort";
 
+/** Composer send outcome. `accepted: false` keeps the draft in the box. */
+export type SendResult = { accepted: boolean; hint?: string };
+
 interface Props {
   managed: ManagedAgentInfo | null;
   busy: boolean;
@@ -29,7 +32,9 @@ interface Props {
    */
   sessionMode: SessionMode;
   onSessionModeChange: (mode: SessionMode) => void;
-  onSend: (text: string) => void;
+  onSend: (text: string) => void | Promise<void | SendResult>;
+  /** Send was refused; parent paints the Disconnected-style turn strip. */
+  onRefusal?: (hint: string | null) => void;
   /** Agent-advertised slash commands (ACP available_commands_update). */
   availableCommands?: AvailableCommand[];
   /**
@@ -62,6 +67,7 @@ export function PromptBar({
   sessionMode,
   onSessionModeChange,
   onSend,
+  onRefusal,
   availableCommands = [],
   timelineItems = [],
   sessionId = null,
@@ -116,7 +122,8 @@ export function PromptBar({
   const onSessionReset = useCallback(() => {
     setMenuOpen(false);
     suppressMenuRef.current = false;
-  }, []);
+    onRefusal?.(null);
+  }, [onRefusal]);
 
   // Session switch: hook owns history + composer text; we only reset slash chrome.
   const history = usePromptHistoryBrowse({
@@ -173,18 +180,23 @@ export function PromptBar({
     focusEnd(next);
   }
 
-  function sendIfReady() {
+  async function sendIfReady() {
     const trimmed = text.trim();
     if (!trimmed || stopping || busy) return;
     // First non-local message auto-connects ACP in App.handleSend.
     const payload = applySessionModeToPrompt(sessionMode, trimmed);
+    setMenuOpen(false);
+    suppressMenuRef.current = false;
+    const result = await Promise.resolve(onSend(payload));
+    if (result && result.accepted === false) {
+      onRefusal?.(result.hint ?? "");
+      return;
+    }
     // Record wire text (matches timeline user cards after mode prefix).
     history.recordSent(payload);
     history.detach();
-    onSend(payload);
+    onRefusal?.(null);
     setText("");
-    setMenuOpen(false);
-    suppressMenuRef.current = false;
   }
 
   /** True when composer already holds the fully-applied form of `cmd`. */
@@ -270,6 +282,7 @@ export function PromptBar({
             // Typing while browsing detaches (keep populated text).
             if (history.active) history.detach();
             suppressMenuRef.current = false;
+            onRefusal?.(null);
             setText(next);
             const q = parseSlashQuery(next);
             if (q && !q.hasArgs) setMenuOpen(true);

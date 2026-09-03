@@ -133,6 +133,19 @@
   animation-duration: 0.55s;
 }
 
+/* Terminal refusal: no motion. A spinner here reads as in-flight work. */
+.turn-mark.mode-still .turn-mark-ring {
+  display: none;
+  animation: none;
+}
+
+.turn-mark.mode-still .turn-mark-dot {
+  width: 6px;
+  height: 6px;
+  animation: none;
+  opacity: 1;
+}
+
 .turn-status.tone-muted .turn-status-label-main,
 .turn-status.tone-wait .turn-status-label-main {
   color: var(--text-muted);

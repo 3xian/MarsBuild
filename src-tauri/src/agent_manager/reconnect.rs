@@ -310,10 +310,10 @@ fn run(inner: Arc<Inner>, handle_id: String, failed_generation: u64) {
     }
 
     if let Some(snapshot) = reconnect_snapshot(&inner, &handle_id, failed_generation) {
-        if let Some(msg) =
+        if let Some(err) =
             crate::sessions::session_open_elsewhere_error(&snapshot.session_id, killed_pid)
         {
-            fail_reconnect(&inner, &handle_id, failed_generation, &msg);
+            fail_reconnect(&inner, &handle_id, failed_generation, &err.message);
             return;
         }
     }

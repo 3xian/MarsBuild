@@ -46,8 +46,8 @@ export type TurnActivityKind =
 
 export type TurnActivitySource = "managed" | "external";
 
-/** Indicator motion: busy spin, calm pulse, or snappy cancel. */
-export type TurnIndicatorMode = "spin" | "wait" | "danger";
+/** Indicator motion: busy spin, calm pulse, snappy cancel, or static. */
+export type TurnIndicatorMode = "spin" | "wait" | "danger" | "still";
 
 export interface ResolvedTurnActivity {
   kind: TurnActivityKind;
@@ -151,6 +151,28 @@ function activity(
     showPhaseTimer: partial.showPhaseTimer ?? true,
     showTurnTimer: partial.showTurnTimer ?? true,
   };
+}
+
+/** Muted reason under red `Not sent`. Same shape as Disconnected + lastError. */
+export const SEND_REFUSAL_HINT = {
+  openElsewhere: "Already open in Grok Build",
+  connecting: "Still connecting",
+} as const;
+
+/** Composer refused a send. Same chrome as ACP Disconnected (red, on the box). */
+export function sendRefusalActivity(hint?: string | null): ResolvedTurnActivity {
+  const trimmed = hint?.trim();
+  return activity({
+    kind: "waiting",
+    label: "Not sent",
+    tone: "danger",
+    indicator: "still",
+    phaseKey: "send-refusal",
+    source: "managed",
+    hint: trimmed || undefined,
+    showPhaseTimer: false,
+    showTurnTimer: false,
+  });
 }
 
 function waiting(

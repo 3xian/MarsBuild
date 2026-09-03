@@ -6,6 +6,7 @@ import {
   formatPhaseTimer,
   resolveTurnActivity,
   resolveTurnStartedAt,
+  sendRefusalActivity,
   type TurnIndicatorMode,
 } from "../utils/turnActivity";
 
@@ -17,6 +18,8 @@ interface Props {
    * Shows an ambient status when PinkCode is not mid-turn on this session.
    */
   sessionIsActive?: boolean;
+  /** Replace the strip with a Disconnected-style refusal after a dropped send. */
+  refusalHint?: string | null;
 }
 
 /** Phase / turn timer tick. */
@@ -32,14 +35,14 @@ export function TurnStatusBar({
   managed,
   timelineItems,
   sessionIsActive = false,
+  refusalHint = null,
 }: Props) {
-  const activity = useMemo(
-    () =>
-      resolveTurnActivity(managed, timelineItems, {
-        sessionIsActive,
-      }),
-    [managed, timelineItems, sessionIsActive],
-  );
+  const activity = useMemo(() => {
+    if (refusalHint != null) return sendRefusalActivity(refusalHint);
+    return resolveTurnActivity(managed, timelineItems, {
+      sessionIsActive,
+    });
+  }, [managed, timelineItems, sessionIsActive, refusalHint]);
 
   const [now, setNow] = useState(() => Date.now());
   const [phaseStartedAt, setPhaseStartedAt] = useState(() => Date.now());
@@ -165,7 +168,7 @@ export function TurnStatusBar({
   );
 }
 
-/** Minimal modern mark: thin arc spinner or soft pulse (wait). */
+/** Busy spin, wait pulse, cancel spin, or a static still dot. */
 function ActivityIndicator({ mode }: { mode: TurnIndicatorMode }) {
   return (
     <span className={`turn-mark mode-${mode}`} aria-hidden>

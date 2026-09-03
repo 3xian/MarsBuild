@@ -134,9 +134,22 @@ export function formatInvokeError(error: unknown): string {
   return String(error);
 }
 
+const EXCLUSIVE_SESSION_CODE = "session_open_elsewhere";
+
+function invokeErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const rec = error as { code?: unknown; error?: unknown };
+  if (typeof rec.code === "string" && rec.code.trim()) return rec.code;
+  if (rec.error && typeof rec.error === "object") {
+    const inner = rec.error as { code?: unknown };
+    if (typeof inner.code === "string" && inner.code.trim()) return inner.code;
+  }
+  return undefined;
+}
+
 /** Attach refused because another Grok pid owns the session. */
 export function isExclusiveSessionError(error: unknown): boolean {
-  return /already open in another Grok process/i.test(formatInvokeError(error));
+  return invokeErrorCode(error) === EXCLUSIVE_SESSION_CODE;
 }
 
 export async function promptAgent(

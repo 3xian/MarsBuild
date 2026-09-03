@@ -5,6 +5,8 @@ import {
   isManagedTurnActive,
   resolveTurnActivity,
   resolveTurnStartedAt,
+  SEND_REFUSAL_HINT,
+  sendRefusalActivity,
 } from "./turnActivity";
 
 function managed(
@@ -150,6 +152,15 @@ describe("resolveTurnActivity", () => {
     expect(act?.label).toBe("Open in Grok Build");
     expect(act?.source).toBe("external");
     expect(act?.hint).toMatch(/connect/i);
+  });
+
+  it("paints a send refusal like Disconnected (danger, on the composer)", () => {
+    const act = sendRefusalActivity(SEND_REFUSAL_HINT.openElsewhere);
+    expect(act.label).toBe("Not sent");
+    expect(act.tone).toBe("danger");
+    expect(act.indicator).toBe("still");
+    expect(act.hint).toBe("Already open in Grok Build");
+    expect(act.showPhaseTimer).toBe(false);
   });
 
   it("does not call a PinkCode ACP error Open in Grok Build", () => {
