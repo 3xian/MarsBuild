@@ -182,6 +182,8 @@ function App() {
   const liveOwnsTail =
     managedForSession != null &&
     isAttachedManagedStatus(managedForSession.status);
+  const liveOwnsTailRef = useRef(liveOwnsTail);
+  liveOwnsTailRef.current = liveOwnsTail;
   const timelineHistory = useTimelineHistory(
     selectedId,
     detail,
@@ -298,10 +300,12 @@ function App() {
     if (now - lastFsRefreshRef.current < FS_REFRESH_MIN_MS) return;
     lastFsRefreshRef.current = now;
     void refreshList();
-    // Roster only. Reloading the open pane from disk replaces recentUpdates
-    // with the first history page and paints as a session restart.
+    const id = selectedIdRef.current;
+    // ACP owns the tail (starting included). Disk-only panes still need
+    // silent getSessionDetail so updates.jsonl refreshes the open timeline.
+    if (id && !liveOwnsTailRef.current) void refreshDetail(id, true);
     setGitRefreshKey((n) => n + 1);
-  }, [refreshList]);
+  }, [refreshList, refreshDetail]);
 
   const liveManagedCount = useMemo(
     () =>
@@ -354,7 +358,13 @@ function App() {
         // the appended bytes for this card.
         void refreshCard(payload.sessionId);
       }
-      // Do not getSessionDetail the open pane on updates.jsonl.
+      if (
+        selected &&
+        !liveOwnsTailRef.current &&
+        (!payload.sessionId || payload.sessionId === selected)
+      ) {
+        void refreshDetail(selected, true);
+      }
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -363,7 +373,7 @@ function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [refreshList, refreshCard]);
+  }, [refreshList, refreshCard, refreshDetail]);
 
   // These are advertised ACP capabilities, so consume their notifications
   // and invalidate the workspace immediately.
@@ -387,6 +397,9 @@ function App() {
         return;
       }
       setGitRefreshKey((n) => n + 1);
+      if (selected && !liveOwnsTailRef.current) {
+        void refreshDetail(selected, true);
+      }
     }).then((fn) => {
       if (cancelled) fn();
       else unlisten = fn;
@@ -395,7 +408,7 @@ function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [refreshDetail]);
 
   // Focus / tab visible → catch anything the watcher missed (debounced).
   useEffect(() => {
