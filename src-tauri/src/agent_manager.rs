@@ -55,6 +55,29 @@ struct PendingGate {
 }
 
 const INITIAL_CONNECTION_GENERATION: u64 = 1;
+const RECONNECT_UNSTABLE: Duration = Duration::from_secs(5);
+const RECONNECT_BURST_LIMIT: u32 = 3;
+
+/// Count deaths inside the last-activate window. A stale or missing activate
+/// resets the burst so a later transport loss can reconnect again.
+pub(crate) fn next_reconnect_burst(
+    last_activate: Option<Instant>,
+    now: Instant,
+    burst: u32,
+) -> u32 {
+    let unstable = last_activate
+        .map(|t| now.saturating_duration_since(t) < RECONNECT_UNSTABLE)
+        .unwrap_or(false);
+    if unstable {
+        burst.saturating_add(1)
+    } else {
+        0
+    }
+}
+
+pub(crate) fn can_reconnect_after_burst(has_session: bool, burst: u32) -> bool {
+    has_session && burst < RECONNECT_BURST_LIMIT
+}
 
 fn finish_prompt(
     in_flight: &mut HashSet<String>,
@@ -920,18 +943,15 @@ impl AgentManager {
                     ) {
                         return;
                     }
-                    const UNSTABLE: Duration = Duration::from_secs(5);
-                    let unstable = agent
-                        .last_activate
-                        .map(|t| t.elapsed() < UNSTABLE)
-                        .unwrap_or(false);
-                    if unstable {
-                        agent.reconnect_burst = agent.reconnect_burst.saturating_add(1);
-                    } else {
-                        agent.reconnect_burst = 0;
-                    }
-                    let can_reconnect =
-                        agent.info.session_id.is_some() && agent.reconnect_burst < 3;
+                    agent.reconnect_burst = next_reconnect_burst(
+                        agent.last_activate,
+                        Instant::now(),
+                        agent.reconnect_burst,
+                    );
+                    let can_reconnect = can_reconnect_after_burst(
+                        agent.info.session_id.is_some(),
+                        agent.reconnect_burst,
+                    );
                     agent.info.status = if can_reconnect {
                         ManagedStatus::Starting
                     } else {
@@ -1702,9 +1722,38 @@ impl AgentManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{finish_prompt, finish_prompt_status, terminal_prompt_id, ManagedStatus};
+    use super::{
+        can_reconnect_after_burst, finish_prompt, finish_prompt_status, next_reconnect_burst,
+        terminal_prompt_id, ManagedStatus,
+    };
     use serde_json::json;
     use std::collections::HashSet;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn reconnect_burst_increments_when_last_activate_is_recent() {
+        let now = Instant::now();
+        let last = Some(now.checked_sub(Duration::from_millis(100)).unwrap());
+        assert_eq!(next_reconnect_burst(last, now, 0), 1);
+        assert_eq!(next_reconnect_burst(last, now, 1), 2);
+        assert_eq!(next_reconnect_burst(last, now, 2), 3);
+    }
+
+    #[test]
+    fn reconnect_burst_resets_when_last_activate_is_stale() {
+        let now = Instant::now();
+        let last = Some(now.checked_sub(Duration::from_secs(6)).unwrap());
+        assert_eq!(next_reconnect_burst(last, now, 2), 0);
+        assert_eq!(next_reconnect_burst(None, now, 2), 0);
+    }
+
+    #[test]
+    fn reconnect_gives_up_after_three_unstable_deaths() {
+        assert!(can_reconnect_after_burst(true, 0));
+        assert!(can_reconnect_after_burst(true, 2));
+        assert!(!can_reconnect_after_burst(true, 3));
+        assert!(!can_reconnect_after_burst(false, 0));
+    }
 
     #[test]
     fn queued_prompt_completion_does_not_replace_current_turn() {
