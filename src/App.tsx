@@ -520,7 +520,7 @@ function App() {
     sessionId: string,
   ): Promise<ManagedAgentInfo | null> {
     const existing = managedList.find(
-      (m) => m.sessionId === sessionId && isLiveManagedStatus(m.status),
+      (m) => m.sessionId === sessionId && isAttachedManagedStatus(m.status),
     );
     if (existing) return existing;
 
@@ -746,6 +746,12 @@ function App() {
         liveAgent = info;
         handleId = info.handleId;
         sessionIdForPlan = info.sessionId ?? sessionId;
+      }
+
+      // Reconnect / first attach still Starting. Do not prompt (agent not
+      // ready) and do not attach again with ignore_pid = None.
+      if (!isLiveManagedStatus(liveAgent?.status)) {
+        return;
       }
 
       if (liveAgent) {
