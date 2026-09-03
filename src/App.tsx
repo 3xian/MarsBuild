@@ -5,6 +5,7 @@ import {
   formatInvokeError,
   isExclusiveSessionError,
   getLastSpawnPermissionMode,
+  getSessionCard,
   getSessionDetail,
   interjectAgent,
   listManagedAgents,
@@ -54,6 +55,7 @@ import {
   isAttachedManagedStatus,
   isLiveManagedStatus,
 } from "./utils/managedStatus";
+import { pickSelectedId } from "./utils/pickSelectedId";
 import type { UserQuestionResolvePayload } from "./utils/permissionPayload";
 import { joinUnderRoot } from "./utils/paths";
 import {
@@ -74,26 +76,10 @@ const FS_REFRESH_MIN_MS = 400;
 /** Slow safety net if FSEvents miss a write (rare). */
 const SAFETY_POLL_MS = 90_000;
 
-/** Single selection policy for staged list → managed load. */
-function pickSelectedId(
-  list: SessionCard[],
-  prev: string | null,
-  managed?: ManagedAgentInfo[],
-): string | null {
-  // Keep the open pane. The roster page is not the full list, so "not in
-  // this page" is not "gone" — treating it as gone remounts from page 1.
-  if (prev) return prev;
-  if (managed?.length) {
-    const managedSid = managed.find((m) => m.sessionId)?.sessionId;
-    if (managedSid && list.some((s) => s.id === managedSid)) {
-      return managedSid;
-    }
-  }
-  const live = list.find((s) => s.isActive);
-  return live?.id ?? list[0]?.id ?? null;
-}
 function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [tab, setTab] = useState<MainTab>("timeline");
   const [detailLoading, setDetailLoading] = useState(false);
@@ -152,13 +138,25 @@ function App() {
   });
   const onRecentSessionsLoaded = useCallback(
     async (list: SessionCard[]) => {
-      setSelectedId((previous) => pickSelectedId(list, previous));
+      const previous = selectedIdRef.current;
+      let prevOnDisk: boolean | undefined;
+      if (previous && !list.some((s) => s.id === previous)) {
+        try {
+          await getSessionCard(previous);
+          prevOnDisk = true;
+        } catch {
+          prevOnDisk = false;
+        }
+      }
+      setSelectedId((prev) => pickSelectedId(list, prev, { prevOnDisk }));
       try {
         const managed = await listManagedAgents();
         for (const item of managed) {
           upsertManaged(item);
         }
-        setSelectedId((previous) => pickSelectedId(list, previous, managed));
+        setSelectedId((prev) =>
+          pickSelectedId(list, prev, { prevOnDisk, managed }),
+        );
       } catch {
         /* managed agents are optional during startup */
       }
@@ -263,8 +261,6 @@ function App() {
     [planArmedSelected, effectivePermissionMode],
   );
 
-  const selectedIdRef = useRef(selectedId);
-  selectedIdRef.current = selectedId;
   const detailReqSeq = useRef(0);
   const lastFsRefreshRef = useRef(0);
   /** Session id we intentionally focused (spawn); ignore auto-steal otherwise. */
